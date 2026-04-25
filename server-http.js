@@ -281,8 +281,17 @@ const server = http.createServer((req, res) => {
     handleCleanupRequest(req, res);
   } else {
     logger.warn({ method: req.method, url: req.url }, 'Unknown request');
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'NOT_FOUND',
+      message: 'Endpoint not found',
+      availableEndpoints: [
+        'GET /health - Health check',
+        'GET /upload/:filename - Stream video',
+        'POST /upload - Upload video',
+        'POST /cleanup - Clean up old files'
+      ]
+    }));
   }
 });
 
