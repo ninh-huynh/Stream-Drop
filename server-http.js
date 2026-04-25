@@ -195,17 +195,16 @@ function handlePostRequest(req, res) {
 
     const host = req.headers.host || `localhost:${PORT}`;
     const forwardedProto = req.headers['x-forwarded-proto'];
-    const isHttps = req.socket.encrypted || 
-                    process.env.RAILWAY_IS_PROXY_HTTPS === 'true' || 
-                    forwardedProto === 'https';
+    const isHttps = req.socket.encrypted ||
+      process.env.RAILWAY_IS_PROXY_HTTPS === 'true' ||
+      forwardedProto === 'https';
     const protocol = isHttps ? 'https' : 'http';
 
     const filePath = `${protocol}://${host}/upload/${fileName}`
 
     if (firstChunkTime) {
-      const durationMs = Date.now() - firstChunkTime;
-      const durationSec = (durationMs / 1000).toFixed(3);
-      logger.info({ fileName, durationSec, bytesReceived, filePath }, 'Upload completed');
+      const transmitDurationMs = Date.now() - firstChunkTime;
+      logger.info({ fileName, transmitDurationMs, bytesReceived, filePath }, 'Upload completed');
 
       if (getDirectorySize() > MAX_STORAGE_SIZE * 0.9) {
         const cleanupResult = cleanupOldFiles();
