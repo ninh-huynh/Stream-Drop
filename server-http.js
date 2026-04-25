@@ -5,6 +5,7 @@ const pino = require('pino');
 
 const UPLOAD_DIR = path.join(__dirname, 'upload');
 const MAX_UPLOAD_SIZE = 200 * 1024 * 1024; // 200MB limit
+const MAX_STORAGE_SIZE = parseInt(process.env.MAX_STORAGE_MB || '400', 10) * 1024 * 1024; // 400MB default
 
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -40,6 +41,66 @@ function parseRange(range, fileSize) {
 function sanitizeFileName(fileName) {
   const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   return sanitized.length > 100 ? sanitized.substring(0, 100) : sanitized;
+}
+
+function getDirectorySize() {
+  let totalSize = 0;
+  const files = fs.readdirSync(UPLOAD_DIR);
+
+  for (const file of files) {
+    const filePath = path.join(UPLOAD_DIR, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isFile()) {
+      totalSize += stat.size;
+    }
+  }
+
+  return totalSize;
+}
+
+function getFilesSortedByAge() {
+  const files = fs.readdirSync(UPLOAD_DIR);
+  const fileStats = [];
+
+  for (const file of files) {
+    const filePath = path.join(UPLOAD_DIR, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isFile()) {
+      fileStats.push([file, stat.mtime.getTime()]);
+    }
+  }
+
+  fileStats.sort((a, b) => a[1] - b[1]);
+  return fileStats;
+}
+
+function cleanupOldFiles() {
+  const currentSize = getDirectorySize();
+
+  if (currentSize <= MAX_STORAGE_SIZE) {
+    return { deletedCount: 0, freedSpace: 0 };
+  }
+
+  const filesToDelete = getFilesSortedByAge();
+  let freedSpace = 0;
+  let deletedCount = 0;
+
+  for (const [filename] of filesToDelete) {
+    if (currentSize - freedSpace <= MAX_STORAGE_SIZE) {
+      break;
+    }
+
+    const filePath = path.join(UPLOAD_DIR, filename);
+    const stat = fs.statSync(filePath);
+    fs.unlinkSync(filePath);
+
+    freedSpace += stat.size;
+    deletedCount++;
+
+    logger.info({ filename, size: stat.size }, 'Deleted file during cleanup');
+  }
+
+  return { deletedCount, freedSpace };
 }
 
 function handleGetRequest(req, res) {
@@ -136,6 +197,16 @@ function handlePostRequest(req, res) {
       const durationMs = Date.now() - firstChunkTime;
       const durationSec = (durationMs / 1000).toFixed(3);
       logger.info({ fileName, durationSec, bytesReceived, filePath }, 'Upload completed');
+
+      if (getDirectorySize() > MAX_STORAGE_SIZE * 0.9) {
+        const cleanupResult = cleanupOldFiles();
+        if (cleanupResult.deletedCount > 0) {
+          logger.info({
+            deletedCount: cleanupResult.deletedCount,
+            freedSpaceMB: (cleanupResult.freedSpace / (1024 * 1024)).toFixed(2)
+          }, 'Automatic cleanup triggered after upload');
+        }
+      }
     } else {
       logger.warn('Upload completed but no data received');
     }
@@ -158,9 +229,39 @@ function handlePostRequest(req, res) {
     logger.error({ error: err.message }, 'Write stream error');
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'WRITE_ERROR', message: err.message }));
+      res.end(JSON.stringify({ success: false, error: 'WRITE_ERROR', message: err.message }));
     }
   });
+}
+
+function handleCleanupRequest(req, res) {
+  logger.info('Cleanup request received');
+
+  try {
+    const result = cleanupOldFiles();
+
+    logger.info({
+      deletedCount: result.deletedCount,
+      freedSpace: result.freedSpace,
+      freedSpaceMB: (result.freedSpace / (1024 * 1024)).toFixed(2)
+    }, 'Cleanup completed');
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      deletedCount: result.deletedCount,
+      freedSpaceBytes: result.freedSpace,
+      freedSpaceMB: Number((result.freedSpace / (1024 * 1024)).toFixed(2))
+    }));
+  } catch (error) {
+    logger.error({ error: error.message }, 'Cleanup failed');
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: false,
+      error: 'CLEANUP_FAILED',
+      message: error.message
+    }));
+  }
 }
 
 const server = http.createServer((req, res) => {
@@ -168,6 +269,8 @@ const server = http.createServer((req, res) => {
     handleGetRequest(req, res);
   } else if (req.method === 'POST' && req.url === '/upload') {
     handlePostRequest(req, res);
+  } else if (req.method === 'POST' && req.url === '/cleanup') {
+    handleCleanupRequest(req, res);
   } else {
     logger.warn({ method: req.method, url: req.url }, 'Unknown request');
     res.writeHead(404, { 'Content-Type': 'text/plain' });
