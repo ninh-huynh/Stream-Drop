@@ -270,7 +270,10 @@ function handleCleanupRequest(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method === 'GET' && req.url.startsWith('/upload/')) {
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+  } else if (req.method === 'GET' && req.url.startsWith('/upload/')) {
     handleGetRequest(req, res);
   } else if (req.method === 'POST' && req.url === '/upload') {
     handlePostRequest(req, res);
@@ -283,7 +286,7 @@ const server = http.createServer((req, res) => {
   }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  logger.info({ host: '0.0.0.0', port: PORT, uploadDir: UPLOAD_DIR, storageSource, uploadEndpoint: `http://localhost:${PORT}/upload` }, 'Server started');
+  logger.info({ host: '0.0.0.0', port: PORT, uploadDir: UPLOAD_DIR, storageSource, uploadEndpoint: `http://localhost:${PORT}/upload`, healthEndpoint: `http://localhost:${PORT}/health` }, 'Server started');
 });
