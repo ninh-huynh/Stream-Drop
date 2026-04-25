@@ -194,7 +194,11 @@ function handlePostRequest(req, res) {
     writeStream.end();
 
     const host = req.headers.host || `localhost:${PORT}`;
-    const protocol = req.socket.encrypted ? 'https' : 'http';
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const isHttps = req.socket.encrypted || 
+                    process.env.RAILWAY_IS_PROXY_HTTPS === 'true' || 
+                    forwardedProto === 'https';
+    const protocol = isHttps ? 'https' : 'http';
 
     const filePath = `${protocol}://${host}/upload/${fileName}`
 
