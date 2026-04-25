@@ -297,5 +297,11 @@ const server = http.createServer((req, res) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  logger.info({ host: '0.0.0.0', port: PORT, uploadDir: UPLOAD_DIR, storageSource, uploadEndpoint: `http://localhost:${PORT}/upload`, healthEndpoint: `http://localhost:${PORT}/health` }, 'Server started');
+  logger.info({ bind: '0.0.0.0', port: PORT }, 'Server started');
+  logger.info({ storage: UPLOAD_DIR, source: storageSource }, 'Storage configured');
+  logger.info({ maxStorage: `${Math.round(MAX_STORAGE_SIZE / 1024 / 1024)}MB` }, 'Storage limit');
+  logger.info({}, `Health:    GET  /health`);
+  logger.info({}, `Upload:    POST /upload`);
+  logger.info({}, `Stream:    GET  /upload/:filename`);
+  logger.info({}, `Cleanup:   POST /cleanup`);
 });
