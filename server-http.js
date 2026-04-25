@@ -3,9 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
-const UPLOAD_DIR = path.join(__dirname, 'upload');
-const MAX_UPLOAD_SIZE = 200 * 1024 * 1024; // 200MB limit
-const MAX_STORAGE_SIZE = parseInt(process.env.MAX_STORAGE_MB || '400', 10) * 1024 * 1024; // 400MB default
+const UPLOAD_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'upload')
+  : path.join(__dirname, 'upload');
+
+const MAX_UPLOAD_SIZE = 200 * 1024 * 1024;
+const MAX_STORAGE_SIZE = parseInt(process.env.MAX_STORAGE_MB || '400', 10) * 1024 * 1024;
+
+const storageSource = process.env.RAILWAY_VOLUME_MOUNT_PATH ? 'Railway volume' : 'local filesystem';
 
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -280,5 +285,5 @@ const server = http.createServer((req, res) => {
 
 const PORT = 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  logger.info({ host: '0.0.0.0', port: PORT, uploadEndpoint: `http://localhost:${PORT}/upload` }, 'Server started');
+  logger.info({ host: '0.0.0.0', port: PORT, uploadDir: UPLOAD_DIR, storageSource, uploadEndpoint: `http://localhost:${PORT}/upload` }, 'Server started');
 });
